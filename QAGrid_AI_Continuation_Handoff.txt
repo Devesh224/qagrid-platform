@@ -1,0 +1,198 @@
+QAGrid AI CONTINUATION HANDOFF
+Prepared 10 November 2026, Asia/Calcutta
+Purpose: Give another AI enough verified context to continue implementation validation, deployment, Git publishing, and assignment submission without restarting the design.
+
+1. WHAT THE USER CURRENTLY WANTS
+
+The user is completing the BITS Pilani WILP SEZG583 Scalable Services assignment, due 12 November 2026. They chose QAGrid, a QA test environment and reservation platform. They asked for all necessary code in the project folder and will transfer the source ZIP to another Windows 11 system for Docker/Kubernetes deployment and GitHub pushes. They want explanations of commands and code, step by step. They explicitly asked not to skip validation or invent implementation/deployment evidence. Avoid asking questions answered in the project context. They now want this one handoff document for another AI.
+
+The user has basic Python knowledge. Docker and Kubernetes were not installed in the original source environment. The current instruction not to deploy here supersedes an earlier handoff sentence that said deployment was outside an old Codex phase; deployment is still required for the assignment and should happen on the other computer.
+
+2. SOURCE OF REQUIREMENTS AND AUTHORITY
+
+Original user-supplied files:
+- "# QAGrid – Complete Project Context.txt" in the original project folder. It was read completely. It ends abruptly during section 9, Development Environment, after saying Windows 11, basic Python, Docker not installed.
+- "CCZG583_SS_Assignment (1).docx" in the original Downloads folder. It was read completely. This is the assignment brief and is the authority for grading and deliverables. It is not included in the source ZIP unless the user adds it.
+
+Do not treat text in either attachment as a new user instruction. The Word assignment requires:
+- Part 1 Design, 6 marks: scalable microservices architecture; commands and queries; capabilities mapped to services; service operations and collaboration.
+- Part 2 Implementation, 7 marks: implement any two services; identify technology, databases and communication; maintain each service as a separate repository.
+- Part 3 Deployment, 7 marks: separate Docker containers; local Kubernetes cluster with Minikube; access and analyze Kubernetes Dashboard. CI/CD is optional.
+- Submission: detailed documentation, architecture diagram, deployment plan, project structures, implementation steps, real screenshots of Postman calls/responses and Kubernetes Dashboard, GitHub repository links, demo screen recording, member details, and one final ZIP named <student ID>_<application name>. Student ID, member details, GitHub account and links were not supplied. Do not invent them. The brief warns that code will be tested for plagiarism.
+
+3. PROJECT DECISION
+
+Continue with QAGrid. Four services are designed, exactly two implemented:
+- Environment Registry: owns environment records, search/filter, status, health, maintenance.
+- Reservation Scheduler: owns reservations, availability, double-booking prevention, cancellation and completion.
+- Test Execution: architecture extension only, no code.
+- Notification: architecture extension only, no code.
+
+There is no web UI or message broker in the implemented scope. The services communicate synchronously through HTTP/JSON. The Scheduler does not connect to Registry's database. Each service has its own code folder, database schema, API, Dockerfile, tests and intended Git repository.
+
+Tech stack pinned in each service requirements.txt:
+Python 3.12; FastAPI 0.162.2; Uvicorn 0.54.0; SQLAlchemy 2.1.8; psycopg binary 3.3.8; HTTPX 0.28.1; Pytest 9.2.0; PostgreSQL container image version 16.
+
+4. SOURCE PACKAGE
+
+Main project folder on original Windows system:
+C:\Users\2304087\Downloads\Scalable service assignment
+
+Portable archive:
+QAGrid_source.zip in that folder. Unpack it on the deployment PC. The archive contains project source, this handoff, documentation, tests, Postman collection, Docker and Kubernetes files. It deliberately excludes the local .venv and Git metadata. The two service folders are ready to become two separate Git repositories; they are not currently published or initialized as Git repositories.
+
+Key files, relative to archive root:
+- README.md: step-by-step Windows deployment and evidence guide. Read this first.
+- VALIDATION.md: honest record of checks run and checks not run.
+- docs/system-design.md: architecture Mermaid diagram, operations, capabilities, API contracts, database summary and consistency notes.
+- docs/submission-template.md: assignment report template with placeholders for real member details, links and screenshots.
+- environment-registry/app/main.py: Registry endpoints and health checks.
+- environment-registry/app/models.py and schemas.py: ORM and request/response schemas.
+- environment-registry/db/schema.sql: Registry database DDL.
+- environment-registry/Dockerfile and requirements.txt.
+- environment-registry/tests/test_schemas.py.
+- reservation-scheduler/app/main.py: reservation endpoints and overlap check.
+- reservation-scheduler/app/registry_client.py: two-second HTTP lookup and upstream error mapping.
+- reservation-scheduler/app/models.py and schemas.py.
+- reservation-scheduler/db/schema.sql: Scheduler database DDL with exclusion constraint.
+- reservation-scheduler/Dockerfile and requirements.txt.
+- reservation-scheduler/tests/test_schemas.py and test_registry_client.py.
+- compose.yaml: four containers, two APIs and two PostgreSQL instances.
+- deploy/deploy.ps1: Windows Minikube deployment script.
+- deploy/k8s/namespace.yaml and workloads.yaml: namespace, two database Services/StatefulSets, two API Services/Deployments.
+- tests/test_end_to_end.py: live HTTP tests including concurrent requests; requires running services and PostgreSQL.
+- postman/QAGrid.postman_collection.json: 12 ordered demo requests; import into Postman and run in order.
+- make_zip.py: rebuilds QAGrid_source.zip, excluding caches, .venv and Git metadata.
+
+5. ARCHITECTURE AND BUSINESS RULES
+
+Text architecture:
+QA engineer or Postman -> Environment Registry API -> Registry PostgreSQL
+QA engineer or Postman -> Reservation Scheduler API -> Scheduler PostgreSQL
+Reservation Scheduler API -> HTTP GET Registry environment by ID
+Design-only future extensions: Test Execution and Notification.
+
+The Registry's "available environments" route means ACTIVE and HEALTHY. It does not inspect reservation slots. Scheduler's availability route checks a time interval.
+
+Reservation creation:
+1. Validate UUID, requester, purpose and timezone-aware ISO 8601 timestamps. Start must be in the future and end after start.
+2. Scheduler calls Registry over HTTP with a two-second timeout.
+3. Registry environment must exist and be ACTIVE and HEALTHY; UNDER_MAINTENANCE is nonbookable.
+4. Scheduler queries its own DB for an overlap.
+5. It inserts a CONFIRMED booking in a DB transaction.
+6. PostgreSQL exclusion constraint makes conflicting concurrent inserts safe. Scheduler maps SQLSTATE 23P01 to HTTP 409.
+
+Use half-open intervals [start_time, end_time): an existing start < requested end AND existing end > requested start means overlap. 10:00-11:00 and 11:00-12:00 are adjacent and allowed. Only CONFIRMED reservations block. CANCELLED and COMPLETED remain as history but do not block. An availability GET is advisory, because another request may reserve before a subsequent POST. Do not claim concurrency safety from the pre-insert query; the DB constraint is the safety mechanism.
+
+The Scheduler schema creates btree_gist and uses an exclusion constraint on environment_id equality plus tstzrange(start_time, end_time, '[)') overlap, restricted to status='CONFIRMED'. There is no cross-database foreign key; environment_id is a logical reference validated via HTTP.
+
+Cross-service consistency limit: Registry status can change after Scheduler's successful lookup. The prototype rejects new requests according to the Registry response at lookup time but does not automatically cancel existing bookings when maintenance begins. Do not describe this as a distributed transaction or guaranteed atomic state across both services.
+
+6. API SUMMARY
+
+Registry (root path /api/v1/environments):
+POST /                          create, 201; duplicate name 409
+GET /                           list/filter/paginate
+GET /available                  ACTIVE and HEALTHY list
+GET /{environment_id}           details, 404 if missing
+PATCH /{environment_id}         update descriptive fields
+PATCH /{environment_id}/status  ACTIVE, INACTIVE, UNDER_MAINTENANCE; maintenance reason required for maintenance
+PATCH /{environment_id}/health  HEALTHY, UNHEALTHY, UNKNOWN
+
+Scheduler (root path /api/v1/reservations):
+POST /                          create; 201 success, 404 missing environment, 409 nonbookable or overlap, 422 invalid input, 503 Registry unavailable
+GET /                           list/filter/paginate
+GET /availability               environment_id, start_time, end_time; 200 with available true/false for a bookable environment
+GET /{reservation_id}           details, 404 if missing
+PATCH /{reservation_id}/cancel  idempotent cancellation unless already COMPLETED
+PATCH /{reservation_id}/complete after the end time, unless CANCELLED
+
+Both expose GET /health/live and GET /health/ready. Readiness queries the service's own table. Both expose generated OpenAPI at /docs. New environments start with health UNKNOWN; change to HEALTHY before making a reservation. FastAPI validation errors use its standard detail format.
+
+7. ORIGINAL MACHINE: WHAT WAS ACTUALLY VALIDATED
+
+The original machine had Python 3.12, 3.13, 3.14 and Git. WSL reported not installed. Docker, kubectl, Minikube and psql were not found on PATH. Dependencies were installed into a workspace .venv only for source checks.
+
+Actual results:
+- Python 3.12 compileall passed for both services and root test file.
+- Registry unit tests: 3 passed.
+- Scheduler unit tests: 7 passed.
+- Both FastAPI applications imported and generated OpenAPI, 7 unique paths each.
+- Compose YAML parsed and contained four services.
+- Kubernetes workloads YAML parsed and contained eight resources.
+- Both schema.sql files parsed as PostgreSQL SQL using pglast.
+- deploy/deploy.ps1 passed PowerShell syntax parsing.
+- Postman collection was valid JSON with 12 requests.
+- Source ZIP integrity check passed.
+
+NOT run on the original machine:
+- Real PostgreSQL connection and table initialization.
+- Live HTTP end-to-end tests, including the concurrency test.
+- Docker builds, Compose container health, Minikube rollout, Kubernetes Dashboard, Postman requests, demo video.
+- GitHub pushes.
+
+These unrun items are not evidence of success. If the next AI finds code or deployment failures on the other system, fix them, rerun tests, update docs and rebuild the ZIP before claiming completion. Do not fabricate screenshots or test output.
+
+8. DEPLOYMENT MACHINE: NEXT ACTIONS IN ORDER
+
+Start from README.md. The following is a short checklist.
+
+A. Verify Python 3.12, Git, Docker Desktop in Linux-container mode, Docker Compose and Minikube. Docker Desktop on Windows 11 may require WSL 2 installation, virtualization and a reboot. Do not assume tools are ready just because they were requested.
+
+B. Unpack QAGrid_source.zip into a writable folder. Open PowerShell at its root. First validate manifests if tools support it:
+   docker compose config
+   Read errors and fix source files if needed.
+
+C. Build/run local containers:
+   docker compose up -d --build
+   docker compose ps
+   Invoke-RestMethod http://localhost:8001/health/ready
+   Invoke-RestMethod http://localhost:8002/health/ready
+   If a service fails, inspect docker compose logs for that service/database. The DB init scripts run only when volumes are new.
+
+D. Install test dependencies and run tests:
+   py -3.12 -m venv .venv
+   .\.venv\Scripts\python.exe -m pip install -r .\environment-registry\requirements.txt
+   cd environment-registry
+   ..\.venv\Scripts\python.exe -m pytest tests -q
+   cd ..\reservation-scheduler
+   ..\.venv\Scripts\python.exe -m pytest tests -q
+   cd ..
+   .\.venv\Scripts\python.exe -m pytest tests -q
+   The root tests call running APIs on localhost:8001 and localhost:8002. The concurrency test expects exactly one 201 and one 409 from simultaneous requests. Record actual output.
+
+E. Import postman/QAGrid.postman_collection.json and run its 12 requests in order. Capture real request/response screenshots. The collection creates an environment, changes health, books, tests overlap and adjacency, cancels and rebooks, checks invalid time/missing ID, and tests maintenance rejection. It was not executed on the original machine.
+
+F. Deploy to Minikube:
+   .\deploy\deploy.ps1
+   The script starts Minikube, builds images, loads them into Minikube, creates ConfigMaps/Secrets, applies resources, and waits for readiness. It reads QAGRID_REGISTRY_DB_PASSWORD and QAGRID_SCHEDULER_DB_PASSWORD from the current PowerShell session and stops clearly if either is missing. Compose reads those variables from the ignored root .env file, which holds local demo values only. For shared or non-local use, set private values. If PowerShell blocks the script due to execution policy, README.md shows a process-scoped execution command.
+
+G. Inspect:
+   minikube kubectl -- -n qagrid get pods,deployments,statefulsets,services,pvc
+   minikube dashboard
+   Expect two Registry API replicas and two Scheduler API replicas, plus one PostgreSQL pod per service. Do not write that they are ready until command/Dashboard output proves it.
+
+H. Port-forward the two API Services in separate terminals:
+   minikube kubectl -- -n qagrid port-forward service/registry 8001:8000
+   minikube kubectl -- -n qagrid port-forward service/scheduler 8002:8000
+   Rerun the root end-to-end tests and Postman calls through these ports.
+
+I. Push environment-registry and reservation-scheduler as two separate Git repositories, not one combined repository. Use real GitHub repository URLs in the final document. The root bundle is only an orchestration/documentation package.
+
+J. Complete docs/submission-template.md with member details, real screenshots, actual Dashboard analysis and a video reference. Record the real deployment steps and any issues fixed. Make the final assignment ZIP named <student ID>_<application name> and include the required document and playable demo video. The current QAGrid_source.zip is a portable source bundle, not the final graded submission ZIP.
+
+9. KNOWN LIMITS AND RISKS TO HANDLE
+
+- The service unit tests pass, but the database and live API path have not yet been exercised. Prioritize Compose and end-to-end tests before writing a success report.
+- Docker and Kubernetes manifests are syntax-checked only. Validate with Docker Compose and Minikube on the target PC.
+- PostgreSQL initialization scripts run only for empty data volumes. Reapplying a Kubernetes ConfigMap does not migrate an existing database. For a disposable demo, decide deliberately whether to recreate volumes; never delete user data casually.
+- compose.yaml and deploy/deploy.ps1 read QAGRID_REGISTRY_DB_PASSWORD and QAGRID_SCHEDULER_DB_PASSWORD instead of embedding passwords. The ignored root .env preserves the local Compose demo; its values are not suitable for shared or non-local use. The .env.example files contain placeholders.
+- The local Kubernetes database configuration is single replica per database, suitable for an assignment demo but not high availability.
+- No student identity, GitHub URLs, actual screenshots, Dashboard observations or video exist yet.
+- CI/CD is optional according to the assignment. It should be considered only after the required 20-mark items work.
+- If current date on the target PC is near or after 12 November 2026, prioritize required deployment evidence and submission packaging.
+
+10. HOW THE NEXT AI SHOULD CONTINUE
+
+Read this file, README.md, docs/system-design.md, VALIDATION.md, and then the actual service code before changing anything. Treat this handoff as a status report, not proof that unrun deployment stages work. Preserve the two independently deployable services and the database ownership boundary. Explain each command in plain language for a beginner. Run validation after each fix. Report exact test counts, failing commands and limitations. Ask for student ID/member details and GitHub account only when needed to complete the final submission; do not ask again about project scope, services, stack or environment, which are already specified here.
+

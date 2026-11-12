@@ -1,0 +1,477 @@
+{
+  "info": {
+    "name": "QAGrid assignment demo",
+    "_postman_id": "642ae351-d49f-41fa-a93c-ce79494d268d",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "registryUrl",
+      "value": "http://localhost:8001"
+    },
+    {
+      "key": "schedulerUrl",
+      "value": "http://localhost:8002"
+    }
+  ],
+  "item": [
+    {
+      "name": "1 Register environment",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{registryUrl}}/api/v1/environments"
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"{{environmentName}}\",\n  \"environment_type\": \"BROWSER\",\n  \"platform\": \"Desktop\",\n  \"operating_system\": \"Windows 11\",\n  \"browser\": \"Chrome\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "exec": [
+              "pm.collectionVariables.set(\"environmentName\", \"Chrome-Windows-\" + Date.now());"
+            ],
+            "type": "text/javascript"
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Created\", () => pm.response.to.have.status(201));",
+              "pm.collectionVariables.set(\"environmentId\", pm.response.json().environment_id);"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "2 Set healthy",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{registryUrl}}/api/v1/environments/{{environmentId}}/health"
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"health_status\": \"HEALTHY\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Healthy\", () => pm.response.to.have.status(200));"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "3 List operational environments",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{registryUrl}}/api/v1/environments/available"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"List succeeds\", () => pm.response.to.have.status(200));"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "4 Create reservation",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{schedulerUrl}}/api/v1/reservations"
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"environment_id\": \"{{environmentId}}\",\n  \"requester\": \"qa@example.com\",\n  \"purpose\": \"Regression\",\n  \"start_time\": \"{{startTime}}\",\n  \"end_time\": \"{{endTime}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "exec": [
+              "const start = new Date(Date.now() + 86400000);",
+              "start.setUTCMinutes(0, 0, 0);",
+              "const end = new Date(start.getTime() + 3600000);",
+              "pm.collectionVariables.set(\"startTime\", start.toISOString());",
+              "pm.collectionVariables.set(\"endTime\", end.toISOString());"
+            ],
+            "type": "text/javascript"
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Created\", () => pm.response.to.have.status(201));",
+              "pm.collectionVariables.set(\"reservationId\", pm.response.json().reservation_id);"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "5 Overlap rejected",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{schedulerUrl}}/api/v1/reservations"
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"environment_id\": \"{{environmentId}}\",\n  \"requester\": \"qa2@example.com\",\n  \"purpose\": \"Overlap attempt\",\n  \"start_time\": \"{{overlapStart}}\",\n  \"end_time\": \"{{overlapEnd}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "exec": [
+              "const start = new Date(pm.collectionVariables.get(\"startTime\"));",
+              "const end = new Date(pm.collectionVariables.get(\"endTime\"));",
+              "pm.collectionVariables.set(\"overlapStart\", new Date(start.getTime() + 1800000).toISOString());",
+              "pm.collectionVariables.set(\"overlapEnd\", new Date(end.getTime() + 1800000).toISOString());"
+            ],
+            "type": "text/javascript"
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Conflict\", () => pm.response.to.have.status(409));"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "6 Adjacent accepted",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{schedulerUrl}}/api/v1/reservations"
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"environment_id\": \"{{environmentId}}\",\n  \"requester\": \"qa2@example.com\",\n  \"purpose\": \"Adjacent slot\",\n  \"start_time\": \"{{endTime}}\",\n  \"end_time\": \"{{adjacentEnd}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "exec": [
+              "pm.collectionVariables.set(\"adjacentEnd\", new Date(new Date(pm.collectionVariables.get(\"endTime\")).getTime() + 3600000).toISOString());"
+            ],
+            "type": "text/javascript"
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Created\", () => pm.response.to.have.status(201));"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "7 Cancel original",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{schedulerUrl}}/api/v1/reservations/{{reservationId}}/cancel"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Cancelled\", () => pm.response.to.have.status(200));"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "8 Rebook cancelled slot",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{schedulerUrl}}/api/v1/reservations"
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"environment_id\": \"{{environmentId}}\",\n  \"requester\": \"qa3@example.com\",\n  \"purpose\": \"Rebook\",\n  \"start_time\": \"{{startTime}}\",\n  \"end_time\": \"{{endTime}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Created\", () => pm.response.to.have.status(201));"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "9 Invalid timestamps",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{schedulerUrl}}/api/v1/reservations"
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"environment_id\": \"{{environmentId}}\",\n  \"requester\": \"qa@example.com\",\n  \"purpose\": \"Bad time\",\n  \"start_time\": \"{{endTime}}\",\n  \"end_time\": \"{{startTime}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Validation error\", () => pm.response.to.have.status(422));"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "10 Missing environment",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{schedulerUrl}}/api/v1/reservations"
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"environment_id\": \"00000000-0000-0000-0000-000000000001\",\n  \"requester\": \"qa@example.com\",\n  \"purpose\": \"Missing\",\n  \"start_time\": \"{{startTime}}\",\n  \"end_time\": \"{{endTime}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Not found\", () => pm.response.to.have.status(404));"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "11 Put environment under maintenance",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{registryUrl}}/api/v1/environments/{{environmentId}}/status"
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"status\": \"UNDER_MAINTENANCE\",\n  \"maintenance_reason\": \"Upgrade\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Maintenance set\", () => pm.response.to.have.status(200));"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "12 Maintenance blocks booking",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{schedulerUrl}}/api/v1/reservations"
+        },
+        "body": {
+          "mode": "raw",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          },
+          "raw": "{\n  \"environment_id\": \"{{environmentId}}\",\n  \"requester\": \"qa4@example.com\",\n  \"purpose\": \"Maintenance attempt\",\n  \"start_time\": \"{{maintenanceStart}}\",\n  \"end_time\": \"{{maintenanceEnd}}\"\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const start = new Date(new Date(pm.collectionVariables.get(\"endTime\")).getTime() + 7200000);",
+              "pm.collectionVariables.set(\"maintenanceStart\", start.toISOString());",
+              "pm.collectionVariables.set(\"maintenanceEnd\", new Date(start.getTime() + 3600000).toISOString());"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Maintenance blocks booking\", () => pm.response.to.have.status(409));"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}
